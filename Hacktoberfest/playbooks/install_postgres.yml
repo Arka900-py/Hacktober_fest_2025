@@ -1,0 +1,63 @@
+---
+- name: Install PostgreSQL 17 on RHEL via PGDG
+  hosts: managed
+  become: true
+  vars:
+    pg_version: 17
+    pgdg_repo_url: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    pgdg_gpg_key_url: "https://download.postgresql.org/pub/repos/yum/keys/PGDG-RPM-GPG-KEY-RHEL"
+    pgdg_gpg_key_path: "/etc/pki/rpm-gpg/PGDG-RPM-GPG-KEY-RHEL"
+    pgdg_repo_rpm_path: "/tmp/pgdg-redhat-repo-latest.noarch.rpm"
+    pg_data_dir: "/var/lib/pgsql/{{ pg_version }}/data"
+
+  tasks:
+
+    - name: Install required packages
+      dnf:
+        name:
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Download PGDG GPG key
+      get_url:
+        url: "{{ pgdg_gpg_key_url }}"
+        dest: "{{ pgdg_gpg_key_path }}"
+        mode: '0644'
+        force: true
+
+    - name: Import PGDG GPG key
+      command: "rpm --import {{ pgdg_gpg_key_path }}"
+      args:
+        creates: "{{ pgdg_gpg_key_path }}"
+
+    - name: Download PGDG repository RPM
+      get_url:
+        url: "{{ pgdg_repo_url }}"
+        dest: "{{ pgdg_repo_rpm_path }}"
+        mode: '0644'
+        force: true
+
+    - name: Install PGDG repository RPM using rpm
+      command: "rpm -Uvh {{ pgdg_repo_rpm_path }}"
+      args:
+        creates: "/etc/yum.repos.d/pgdg-redhat-all.repo"
+
+    - name: Install PostgreSQL 17 server
+      dnf:
+        name:
+          - "postgresql17-server"
+          - "postgresql17"
+        state: present
+
+    - name: Initialize PostgreSQL database if not already initialized
+      command: "/usr/pgsql-17/bin/postgresql-17-setup initdb"
+      args:
+        creates: "{{ pg_data_dir }}/PG_VERSION"
+
+    - name: Enable and start PostgreSQL service
+      systemd:
+        name: "postgresql-17"
+        enabled: true
+        state: started
